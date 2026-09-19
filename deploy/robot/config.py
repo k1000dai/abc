@@ -70,6 +70,7 @@ def _profile(
     can_serials: tuple[str, str, str, str],
     gripper_type: str = "linear_4310",
     follower_control_rate: int = 30,
+    follower_channels: tuple[str, str] = ("can_l_foll", "can_r_foll"),
     leader_servo_ids: tuple[tuple[int, ...], tuple[int, ...]] = (
         (40, 41, 42, 43, 44, 45, 46),
         (40, 41, 42, 43, 44, 45, 46),
@@ -93,7 +94,7 @@ def _profile(
                 joint_signs=joint_signs,
             ),
             follower=FollowerConfig(
-                channel=f"can_{side[0]}_foll",
+                channel=channel,
                 control_rate=follower_control_rate,
                 gripper_type=gripper_type,
             ),
@@ -101,9 +102,10 @@ def _profile(
             root_ori=[1.0, 0.0, 0.0, 0.0],
             init_q=init_q[side].copy(),
         )
-        for side, device, servo_ids, joint_signs in zip(
+        for side, device, channel, servo_ids, joint_signs in zip(
             ("left", "right"),
             leader_devices,
+            follower_channels,
             leader_servo_ids,
             leader_joint_signs,
             strict=True,
@@ -147,6 +149,10 @@ _BBOX_CAN = (
     "00550034594E501820313332",
     "004B00555842500820333850",
 )
+# This station's /etc/udev/rules.d/90-can.rules already names the follower
+# adapters (serials 20523381594E5018 and 207A37B045465006), so the profile
+# opens those names directly and setup_can_names.sh has nothing to rename.
+_ABCBOX_CAN = ("", "", "", "")
 _CBOX_CAN = (
     "0051005C594E501820313332",
     "0045002E594E501820313332",
@@ -168,6 +174,15 @@ PROFILES = {
         init_q=_BBOX_INIT_Q,
         can_serials=_BBOX_CAN,
         gripper_type="crank_4310",
+    ),
+    # Inference-only station: three D405s and two follower CAN adapters, no
+    # GELLO leaders attached, so teleop and DAgger are unavailable here.
+    "abcbox_config": _profile(
+        camera_serials=("260322279434", "260322279288", "260522273363"),
+        leader_devices=("", ""),
+        init_q=_DEFAULT_INIT_Q,
+        can_serials=_ABCBOX_CAN,
+        follower_channels=("can_follower_l", "can_follower_r"),
     ),
     "cbox_config": _profile(
         camera_serials=("335122270655", "335122270354", "335122270952"),

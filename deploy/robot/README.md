@@ -18,7 +18,13 @@ robot station to use:
 export ROBOT_PROFILE=bbox_config   # Original bbox station
 export ROBOT_PROFILE=cbox_config   # Cbox station
 export ROBOT_PROFILE=gtwy_config   # Gateway station
+export ROBOT_PROFILE=abcbox_config # abcbox station (inference only, no leaders)
 ```
+
+`abcbox_config` has its own bring-up runbook in
+[`deploy/STATION_ABCBOX.md`](../STATION_ABCBOX.md): hardware inventory, the
+`follower_channels` override it relies on, verified launch commands, and
+measured VRAM and latency.
 
 Profiles are defined in the `PROFILES` dict in `deploy/robot/config.py` and
 contain all hardware-specific IDs (camera serials, CAN device serials, leader
