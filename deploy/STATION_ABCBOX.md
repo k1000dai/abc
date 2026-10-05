@@ -19,19 +19,41 @@ Everything below was measured on this station on 2026-09-19 with
 | Followers | 2x Geschwister Schneider (gs_usb) CAN, 1 Mbit/s |
 | left CAN | serial `20523381594E5018`, interface `can_follower_l` |
 | right CAN | serial `207A37B045465006`, interface `can_follower_r` |
-| Grippers | `linear_4310` |
+| Grippers | Flex Point adaptive gripper (`flexible_4310`) on both arms, replacing the `linear_4310` used for the 2026-09-19 measurements |
 | Leaders | none attached — teleop, data collection and DAgger are unavailable here |
 
 Python 3.11 in `.venv`; `torch 2.11.0+cu128` runs on this GPU (sm_120).
 
 ## What changed in the shared code
 
-One file, `deploy/robot/config.py`:
+`deploy/robot/config.py`:
 
 1. `_profile()` gained a `follower_channels` keyword, defaulting to
    `("can_l_foll", "can_r_foll")`. The follower CAN interface name was
    previously hardcoded as `f"can_{side[0]}_foll"`.
 2. `abcbox_config` passes `("can_follower_l", "can_follower_r")`.
+3. `abcbox_config` sets `gripper_type="flexible_4310"`.
+
+`deploy/robot/followers/yam_follower.py`:
+
+The pinned i2rt fork (`arthurallshire/i2rt-drivers@852f6ff`) has no
+`FLEXIBLE_4310` gripper type, so `flexible_4310` used to raise `KeyError` at
+follower boot. Upstream i2rt's `flexible_4310` config is the `linear_4310`
+config with the gripper motor direction set to `-1` and nothing else changed
+(same DM4310, kp 20 / kd 0.5, calibrated limits, same force limiter). The
+follower therefore maps `flexible_4310` to the fork's `LINEAR_4310` and flips
+the gripper motor direction to `-1` while `get_yam_robot` builds the motor
+chain. The flip has to happen before construction because
+`detect_gripper_limits` uses the direction to decide which detected limit is
+open and which is closed.
+
+The `-1` was verified on both arms on 2026-10-05: after calibration the
+gripper reads `0.0` closed and `1.0` open, which is i2rt's convention
+(`gripper_limits = [closed, open]`, mapped by `JointMapper` to 0..1). With
+direction `+1` the detected limits come out in the opposite order and the
+gripper observation is inverted. Detected raw limits were `[-0.25, 5.12]` rad
+(left) and `[-0.33, 5.14]` rad (right), with commanded 0 / 1 reading
+`0.007 / 0.999` and `0.009 / 0.997`.
 
 This station already had `/etc/udev/rules.d/90-can.rules` naming its adapters
 `can_follower_l` / `can_follower_r`, and that rules file sorts before the
@@ -174,3 +196,8 @@ Two mistakes cost real time during bring-up:
   leaders are attached and their devices added to the profile.
 - `init_q` is the generic `_DEFAULT_INIT_Q`, not tuned for this workspace.
   `DEPLOY_INIT_Q` overrides it with 14 values without editing the profile.
+- The measurements above were taken with `linear_4310` grippers. The Flex
+  Point gripper has the same 0.096 m stroke, so the 0..1 gripper command is
+  nominally compatible, but ABC-130k was collected with rigid fingers and the
+  soft tips change grasp behaviour. No rollout has been measured with the
+  flexible gripper yet.

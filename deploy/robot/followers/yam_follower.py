@@ -1,6 +1,8 @@
+import contextlib
 import logging
 import os
 import time
+from typing import ClassVar
 
 import numpy as np
 import tyro
@@ -96,6 +98,37 @@ def _patch_gripper_calibration():
     _mcr._gripper_cal_patched = True
 
 
+@contextlib.contextmanager
+def _gripper_motor_direction(direction: int):
+    """Make get_yam_robot build its motor chain with the gripper motor (the
+    last entry) running in ``direction`` instead of the hardcoded +1.
+
+    The direction has to be in place before MotorChainRobot is constructed:
+    detect_gripper_limits reads it to decide which detected limit is "open"
+    and which is "closed", so flipping it afterwards would invert the 0..1
+    gripper observation the policy sees.
+    """
+    if direction == 1:
+        yield
+        return
+
+    import i2rt.robots.get_robot as _get_robot
+
+    original_chain_cls = _get_robot.DMChainCanInterface
+
+    class _DirectionChain(original_chain_cls):
+        def __init__(self, motor_list, motor_offset, motor_direction, *args, **kwargs):
+            motor_direction = list(motor_direction)
+            motor_direction[-1] = direction
+            super().__init__(motor_list, motor_offset, motor_direction, *args, **kwargs)
+
+    _get_robot.DMChainCanInterface = _DirectionChain
+    try:
+        yield
+    finally:
+        _get_robot.DMChainCanInterface = original_chain_cls
+
+
 class YAMFollowerNode(Node):
     def __init__(
         self,
@@ -178,11 +211,20 @@ class YAMFollowerNode(Node):
 
         return np.concatenate([joint_pos, gripper_pos, joint_vel, joint_eff])
 
-    _GRIPPER_TYPE_MAP = {
+    # The pinned i2rt fork has no FLEXIBLE_4310 member. Upstream i2rt's
+    # flexible_4310 config (Flex Point adaptive gripper) is identical to
+    # linear_4310 (DM4310, kp 20 / kd 0.5, calibrated limits, same force
+    # limiter) except that its gripper motor runs with direction -1, so it is
+    # driven as LINEAR_4310 with the direction flipped (see
+    # _GRIPPER_MOTOR_DIRECTION and _gripper_motor_direction).
+    _GRIPPER_TYPE_MAP: ClassVar[dict[str, str]] = {
         "crank_4310": "CRANK_4310",
         "linear_3507": "LINEAR_3507",
         "linear_4310": "LINEAR_4310",
-        "flexible_4310": "FLEXIBLE_4310",
+        "flexible_4310": "LINEAR_4310",
+    }
+    _GRIPPER_MOTOR_DIRECTION: ClassVar[dict[str, int]] = {
+        "flexible_4310": -1,
     }
 
     def initial_bootup(self) -> None:
@@ -191,11 +233,12 @@ class YAMFollowerNode(Node):
         from i2rt.robots.utils import GripperType
 
         gripper_enum = GripperType[self._GRIPPER_TYPE_MAP[self.gripper_type]]
-        self.robot = get_yam_robot(
-            channel=self.channel,
-            gripper_type=gripper_enum,
-            zero_gravity_mode=False,
-        )
+        with _gripper_motor_direction(self._GRIPPER_MOTOR_DIRECTION.get(self.gripper_type, 1)):
+            self.robot = get_yam_robot(
+                channel=self.channel,
+                gripper_type=gripper_enum,
+                zero_gravity_mode=False,
+            )
         default_kp = self.robot._kp
         default_kd = self.robot._kd
 

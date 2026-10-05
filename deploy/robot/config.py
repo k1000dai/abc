@@ -177,12 +177,14 @@ PROFILES = {
     ),
     # Inference-only station: three D405s and two follower CAN adapters, no
     # GELLO leaders attached, so teleop and DAgger are unavailable here.
+    # Both arms carry the Flex Point adaptive gripper (flexible_4310).
     "abcbox_config": _profile(
         camera_serials=("260322279434", "260322279288", "260522273363"),
         leader_devices=("", ""),
         init_q=_DEFAULT_INIT_Q,
         can_serials=_ABCBOX_CAN,
         follower_channels=("can_follower_l", "can_follower_r"),
+        gripper_type="flexible_4310",
     ),
     "cbox_config": _profile(
         camera_serials=("335122270655", "335122270354", "335122270952"),
